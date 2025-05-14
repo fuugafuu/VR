@@ -67,7 +67,7 @@
     animateScanLine();
 
     // Google Vision API call (as shown in previous example)
-    const API_KEY = 'YOUR_GOOGLE_CLOUD_API_KEY';
+    const API_KEY = 'AIzaSyBYqvqg0mgWYRxe_XNqHe5antlubqaGjAA';
     async function captureImage() {
       const imageData = canvas.toDataURL('image/png').split(',')[1];
       const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${API_KEY}`, {
