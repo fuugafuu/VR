@@ -1,98 +1,104 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Object Recognition</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ar.js@3.3.2/aframe/build/aframe-ar.js"></script>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: #000;
-        }
-        #label-container {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            font-size: 20px;
-        }
-        #webcam-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>YOLOv8 AR HUD Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <style>
+    body, html {
+      margin: 0; padding: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: black;
+    }
+    video, canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      object-fit: cover;
+    }
+    #hudCanvas { pointer-events: none; z-index: 2; }
+  </style>
 </head>
 <body>
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="hudCanvas"></canvas>
+  <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+    <a-entity camera look-controls position="0 1.6 0"></a-entity>
+    <a-entity id="compass"
+              geometry="primitive: ring; radiusInner: 0.5; radiusOuter: 0.6"
+              material="color: red; shader: flat"
+              position="0 1.6 -2">
+    </a-entity>
+  </a-scene>
 
-    <div id="webcam-container"></div>
-    <div id="label-container"></div>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('hudCanvas');
+    const ctx = canvas.getContext('2d');
+    let model;
+    let lastSpoken = "";
 
-    <!-- AR View -->
-    <a-scene embedded arjs>
-        <a-box position="0 0.5 0" material="color: blue;"></a-box>
-        <a-marker preset="hiro">
-            <a-entity 
-                geometry="primitive: box" 
-                material="color: red"
-                position="0 0 0">
-            </a-entity>
-        </a-marker>
-        <a-entity camera></a-entity>
-    </a-scene>
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }, audio: false
+      });
+      video.srcObject = stream;
+      return new Promise(resolve => video.onloadedmetadata = resolve);
+    }
 
-    <script type="text/javascript">
-        const URL = './public/';
-        let model, webcam, labelContainer, maxPredictions;
+    function speak(text) {
+      if (text !== lastSpoken) {
+        const utter = new SpeechSynthesisUtterance(text);
+        speechSynthesis.speak(utter);
+        lastSpoken = text;
+      }
+    }
 
-        // Initialize the camera and model
-        async function init() {
-            const modelURL = URL + 'model.json';
-            const metadataURL = URL + 'metadata.json';
-
-            model = await tmImage.load(modelURL, metadataURL);
-            maxPredictions = model.getTotalClasses();
-
-            const flip = true;
-            webcam = new tmImage.Webcam(200, 200, flip); // Set webcam resolution
-            await webcam.setup();
-            await webcam.play();
-            window.requestAnimationFrame(loop);
-
-            // Append webcam canvas to DOM
-            document.getElementById("webcam-container").appendChild(webcam.canvas);
-            labelContainer = document.getElementById("label-container");
-
-            // Create labels for predictions
-            for (let i = 0; i < maxPredictions; i++) {
-                labelContainer.appendChild(document.createElement("div"));
-            }
+    function animateHUD(x, y, w, h, label) {
+      gsap.to({}, {
+        duration: 0.3,
+        onUpdate: () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.strokeStyle = 'lime';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x, y, w, h);
+          ctx.font = '20px Arial';
+          ctx.fillStyle = 'lime';
+          ctx.fillText(label, x, y - 10);
         }
+      });
+    }
 
-        async function loop() {
-            webcam.update();
-            await predict();
-            window.requestAnimationFrame(loop);
+    async function detectLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const predictions = await model.detect(video);
+
+      predictions.forEach(pred => {
+        if (pred.score > 0.7) {
+          const [x, y, w, h] = pred.bbox;
+          animateHUD(x, y, w, h, pred.class);
+          speak(pred.class);
         }
+      });
 
-        // Prediction logic
-        async function predict() {
-            const prediction = await model.predict(webcam.canvas);
-            for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-                labelContainer.childNodes[i].innerHTML = classPrediction;
-            }
-        }
+      requestAnimationFrame(detectLoop);
+    }
 
-        // Call init when the page loads
-        window.onload = init;
-    </script>
+    async function main() {
+      await setupCamera();
+      video.play();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      model = await cocoSsd.load();
+      detectLoop();
+    }
 
+    main();
+  </script>
 </body>
 </html>
