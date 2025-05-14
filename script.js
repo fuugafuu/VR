@@ -6,21 +6,28 @@ const log = document.getElementById('log');
 const colors = {};
 
 async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment' },
+    audio: false
+  });
   video.srcObject = stream;
   return new Promise(resolve => {
     video.onloadedmetadata = () => resolve(video);
   });
 }
 
-async function run() {
-  await setupCamera();
-  const model = await cocoSsd.load();
-  detectFrame(video, model);
-}
-
 function randomColor() {
   return `hsl(${Math.floor(Math.random() * 360)}, 100%, 50%)`;
+}
+
+function speak(text) {
+  if (!window.speaking) {
+    window.speaking = true;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ja-JP';
+    utterance.onend = () => window.speaking = false;
+    speechSynthesis.speak(utterance);
+  }
 }
 
 function detectFrame(video, model) {
@@ -48,9 +55,15 @@ function detectFrame(video, model) {
       tag.style.top = `${y}px`;
       tag.style.color = colors[pred.class];
       tag.style.fontSize = '20px';
+      tag.style.opacity = '1';
       hud.appendChild(tag);
 
-      gsap.to(tag, { opacity: 0, y: -30, duration: 2, onComplete: () => hud.removeChild(tag) });
+      gsap.to(tag, {
+        opacity: 0,
+        y: -30,
+        duration: 2,
+        onComplete: () => tag.remove()
+      });
 
       const time = new Date().toLocaleTimeString();
       log.innerHTML += `<div>[${time}] ${pred.class}</div>`;
@@ -61,17 +74,7 @@ function detectFrame(video, model) {
   });
 }
 
-function speak(text) {
-  if (!window.speaking) {
-    window.speaking = true;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ja-JP';
-    utterance.onend = () => window.speaking = false;
-    speechSynthesis.speak(utterance);
-  }
-}
-
-// コンパスの方位取得
+// コンパス表示
 window.addEventListener('deviceorientationabsolute', function (event) {
   const compass = document.getElementById('compass');
   if (event.absolute && typeof event.alpha === 'number') {
@@ -79,5 +82,11 @@ window.addEventListener('deviceorientationabsolute', function (event) {
     compass.setAttribute('value', `Heading: ${heading.toFixed(1)}°`);
   }
 }, true);
+
+async function run() {
+  await setupCamera();
+  const model = await cocoSsd.load();
+  detectFrame(video, model);
+}
 
 run();
