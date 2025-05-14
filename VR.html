@@ -1,0 +1,103 @@
+!DOCTYPE html
+html lang=en
+head
+  meta charset=UTF-8
+  meta name=viewport content=width=device-width, initial-scale=1.0
+  titleIntegrated AR + AItitle
+  script src=httpscdn.jsdelivr.netnpm@tensorflowtfjs@latestdisttf.min.jsscript
+  script src=httpscdn.jsdelivr.netnpm@tensorflow-modelscoco-ssdscript
+  script src=httpscdnjs.cloudflare.comajaxlibsgsap3.9.1gsap.min.jsscript
+  script src=httpsaframe.ioreleases1.2.0aframe.min.jsscript
+  script src=httpscdn.jsdelivr.netnpmar.js@3.3.2aframebuildaframe-ar.jsscript
+head
+body
+  video id=video autoplayvideo
+  canvas id=canvascanvas
+  canvas id=hudCanvas width=640 height=480canvas
+
+  script
+     Initialize Camera and Object Detection
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hudCanvas = document.getElementById('hudCanvas');
+    const hudCtx = hudCanvas.getContext('2d');
+
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video true });
+      video.srcObject = stream;
+    }
+
+    async function detect() {
+      const model = await cocoSsd.load();
+      const predictions = await model.detect(video);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      predictions.forEach(prediction = {
+        ctx.beginPath();
+        ctx.rect(...prediction.bbox);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'red';
+        ctx.fillStyle = 'red';
+        ctx.stroke();
+        ctx.fillText(prediction.class, prediction.bbox[0], prediction.bbox[1] - 10);
+      });
+      requestAnimationFrame(detect);
+    }
+
+    startCamera().then(() = {
+      video.play();
+      detect();
+    });
+
+     GSAP Animation for HUD
+    function animateScanLine() {
+      gsap.to(hudCtx, {
+        duration 2,
+        repeat -1,
+        yoyo true,
+        onUpdate () = {
+          hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+          hudCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+          hudCtx.fillRect(0, Math.sin(Date.now()  500)  50 + 200, hudCanvas.width, 5);
+        },
+      });
+    }
+
+    animateScanLine();
+
+     Google Vision API call (as shown in previous example)
+    const API_KEY = 'YOUR_GOOGLE_CLOUD_API_KEY';
+    async function captureImage() {
+      const imageData = canvas.toDataURL('imagepng').split(',')[1];
+      const response = await fetch(`httpsvision.googleapis.comv1imagesannotatekey=${API_KEY}`, {
+        method 'POST',
+        headers { 'Content-Type' 'applicationjson' },
+        body JSON.stringify({
+          requests [{
+            image { content imageData },
+            features [{ type 'LABEL_DETECTION' }],
+          }],
+        }),
+      });
+
+      const result = await response.json();
+      const labels = result.responses[0].labelAnnotations;
+      labels.forEach(label = {
+        console.log(`Label ${label.description}, Confidence ${label.score}`);
+      });
+    }
+
+     WebAR Location Tracking
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(position = {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        console.log(`Current location Latitude ${lat}, Longitude ${lon}`);
+      });
+    } else {
+      console.error('Geolocation is not supported by this browser.');
+    }
+  script
+body
+html
